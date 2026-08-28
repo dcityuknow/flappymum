@@ -1,7 +1,7 @@
 # Flappy Game
 
-A fullscreen Flappy-Bird-style game with a name/character lobby and an
-optional global (shared) leaderboard, backed by a Google Sheet.
+A fullscreen Flappy-Bird-style game with a name/character lobby and a
+real-time global leaderboard, backed by Firebase Realtime Database.
 
 ## Project structure
 
@@ -11,19 +11,20 @@ flappy-game/
 ├── css/
 │   └── style.css         All styling
 ├── js/                    Loaded in this exact order (see index.html)
-│   ├── dom.js             Cached references to DOM elements
-│   ├── effects.js         Score pop animation, canvas resize, zoom lock
-│   ├── audio.js           Web Audio sound effects (flap/score/game over)
-│   ├── sprites.js         Image loading + auto-trim of blank sprite space
-│   ├── config.js          Tunable constants (gravity, speed, sizes...)
-│   ├── state.js           Mutable run-time game state
-│   ├── leaderboard.js     Global (Sheet) + local (localStorage) leaderboard
-│   ├── lobby.js           Name entry / character select / start screen
-│   ├── game.js            Physics update, collisions, rendering, game loop
-│   └── main.js            Wires up input controls, boots the game
-├── assets/                Put your game art here (see below)
-└── backend/
-    └── Code.gs            Google Apps Script leaderboard API
+│   ├── firebase-config.js  Your Firebase project keys — fill this in
+│   ├── dom.js              Cached references to DOM elements
+│   ├── effects.js          Score pop animation, canvas resize, zoom lock
+│   ├── audio.js            Web Audio sound effects (flap/score/game over)
+│   ├── sprites.js          Image loading + auto-trim of blank sprite space
+│   ├── config.js           Tunable constants (gravity, speed, sizes...)
+│   ├── state.js            Mutable run-time game state
+│   ├── leaderboard.js      Global (Firebase) + local (localStorage) leaderboard
+│   ├── lobby.js            Name entry / character select / start screen
+│   ├── game.js             Physics update, collisions, rendering, game loop
+│   └── main.js             Wires up input controls, boots the game
+├── assets/                 Put your game art here (see below)
+└── legacy-google-sheets-backend/
+    └── Code.gs             Old Apps Script backend — kept for reference only, not used
 ```
 
 ### Why plain `<script src>` tags instead of a bundler?
@@ -34,11 +35,9 @@ and browsers run all classic scripts on a page in one shared global scope —
 so splitting the code into files changes nothing at runtime as long as the
 `<script>` tags stay in the order shown in `index.html` (each file relies on
 things declared by the files before it). This also means you can still just
-double-click `index.html` and it works, no local server required.
-
-If this project grows much further, the natural next step is to convert
-these into ES modules (`import`/`export`) with a small bundler — worth doing
-once you're adding features regularly, not before.
+double-click `index.html` and it works, no local server required — except
+for the Firebase leaderboard, which needs an actual `http(s)://` origin
+(see the note in step 2 below).
 
 ## 1. Add your art assets
 
@@ -53,32 +52,78 @@ Drop these five images into `assets/` (same filenames the code expects):
 | `item.png` | Collectible item |
 | `diem.png` | Score icon (top-left HUD) |
 
-## 2. (Optional) Set up the global leaderboard
+## 2. Set up the global leaderboard (Firebase)
 
-By default the game stores scores per-browser (`localStorage`), so each
-player only sees their own history. To share one leaderboard across every
-player, deploy the included Apps Script as a tiny free backend:
+The leaderboard uses **Firebase Realtime Database**. It's free for a
+hobby/friends-scale game and updates every open browser instantly when
+someone sets a new score, with no server code of your own to deploy or
+misconfigure.
 
-1. Go to https://sheets.google.com and create a new blank spreadsheet.
-2. Rename the bottom tab to exactly `Leaderboard`.
-3. In row 1, add these 4 headers, one per column: `Name | Score | Character | Date`.
-4. In the menu, go to **Extensions > Apps Script**.
-5. Delete the sample code there and paste in the contents of `backend/Code.gs`.
-6. Click **Deploy > New deployment**.
-   - Click the gear icon next to "Select type" and choose **Web app**.
-   - Description: anything, e.g. "Flappy leaderboard".
-   - Execute as: **Me**.
-   - Who has access: **Anyone**.
-7. Click **Deploy**. The first time, Google will ask you to authorize the
-   script — click through "Advanced" > "Go to (project name) (unsafe)" if
-   it warns you (this is normal for your own scripts).
-8. Copy the "Web app URL" it gives you — it looks like:
-   `https://script.google.com/macros/s/XXXXXXXXXXXXXXXXXXXX/exec`
-9. Paste that URL into `LEADERBOARD_API_URL` at the top of `js/leaderboard.js`.
+1. Go to https://console.firebase.google.com, click **Add project**, and
+   follow the prompts (Google Analytics is optional, you can skip it).
+2. In the left sidebar, open **Build > Realtime Database > Create Database**.
+   Pick any region, and start in **locked mode** (you'll set proper rules in
+   step 4 below).
+3. Still in the console, click the gear icon (top-left) > **Project settings**
+   > scroll to **Your apps** > click the Web icon (`</>`) to register a new
+   web app (no need to check "Firebase Hosting"). It will show you a
+   `firebaseConfig` object — copy the values into `js/firebase-config.js`:
 
-Leave `LEADERBOARD_API_URL` empty (`''`) to keep the local-only leaderboard.
+   ```js
+   const firebaseConfig = {
+     apiKey: "...",
+     authDomain: "...",
+     databaseURL: "...",   // <- make sure this one is filled in too
+     projectId: "...",
+   };
+   ```
+
+4. Back in **Realtime Database > Rules**, replace the rules with the
+   following (allows anyone to read/write, but validates the shape of each
+   score entry so a broken client can't corrupt the data) and click
+   **Publish**:
+
+   ```json
+   {
+     "rules": {
+       "leaderboard": {
+         ".read": true,
+         ".write": true,
+         "$entryId": {
+           ".validate": "newData.hasChildren(['name','score','charNum','date'])
+             && newData.child('name').isString() && newData.child('name').val().length <= 20
+             && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 9999
+             && newData.child('charNum').isNumber() && (newData.child('charNum').val() == 1 || newData.child('charNum').val() == 2)
+             && newData.child('date').isNumber()"
+         }
+       }
+     }
+   }
+   ```
+
+   This is a hobby-appropriate level of protection: it stops malformed data,
+   not a determined cheater editing their own client to submit a fake (but
+   validly-shaped) high score — there's no way to fully prevent that without
+   a server that verifies gameplay, which is overkill for this kind of game.
+
+5. **Host it somewhere with a real origin.** The Firebase SDK (and most
+   browsers' security rules around it) don't work reliably from a bare
+   `file://` path — serve the folder over `http(s)://`. Easiest options:
+   a static host like GitHub Pages/Netlify, or for local testing,
+   `npx serve .` (or any simple local web server) inside the `flappy-game/`
+   folder.
+
+If you leave `js/firebase-config.js` with its placeholder `apiKey`, the game
+still works — it just falls back to a leaderboard stored per-browser
+(`localStorage`), same as before.
 
 ## 3. Run it
 
-Just open `index.html` in a browser (double-click works), or host the
-`flappy-game/` folder on any static host (GitHub Pages, Netlify, etc.).
+Host the `flappy-game/` folder on any static host (GitHub Pages, Netlify,
+etc.), or run a local static server from inside the folder, e.g.:
+
+```
+npx serve .
+```
+
+then open the URL it prints.
