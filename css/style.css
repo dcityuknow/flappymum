@@ -1,0 +1,304 @@
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #70c5ce;
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+    touch-action: none; /* block pinch-zoom / double-tap zoom */
+  }
+  #gameCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+  }
+  #msg {
+    position: fixed;
+    color: #fff;
+    text-shadow: 2px 2px 4px #000;
+    font-size: 6vw;
+    text-align: center;
+    top: 40%;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    white-space: pre-line;
+  }
+  #scoreBox {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transform-origin: left center;
+    transition: transform 0.28s cubic-bezier(.34,1.56,.64,1), filter 0.28s ease;
+    z-index: 10;
+  }
+  #scoreBox.pop {
+    transform: scale(1.45);
+    filter: drop-shadow(0 0 10px #fff9c4) drop-shadow(0 0 22px #ffee58) drop-shadow(0 0 32px #fff176);
+  }
+  #scoreIcon {
+    height: 8vw;
+    max-height: 60px;
+    min-height: 36px;
+    width: auto;
+    display: block;
+  }
+  #scoreText {
+    color: #fff;
+    font-size: 7vw;
+    max-font-size: 48px;
+    font-weight: bold;
+    text-shadow: 2px 2px 4px #000;
+  }
+
+  /* ---- Player name tag ---- */
+  #playerTag {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.35);
+    padding: 6px 14px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 3.6vw;
+    max-font-size: 18px;
+    font-weight: bold;
+    text-shadow: 1px 1px 3px #000;
+    z-index: 10;
+  }
+  #playerTag img {
+    height: 4.5vw;
+    max-height: 26px;
+    min-height: 18px;
+    width: auto;
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  /* ---- Leaderboard button, always floating ---- */
+  #leaderboardBtn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 30;
+    background: linear-gradient(180deg, #ffe066, #ffb300);
+    border: none;
+    border-radius: 999px;
+    padding: 4px 7px;
+    font-weight: bold;
+    font-size: 1.3vw;
+    max-font-size: 6.5px;
+    color: #5c3d00;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  #leaderboardBtn:active { transform: scale(0.96); }
+
+  /* ---- Back-to-lobby button, always floating bottom-left ---- */
+  #lobbyBtn {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 30;
+    background: rgba(255,255,255,0.9);
+    border: none;
+    border-radius: 999px;
+    padding: 4px 7px;
+    font-weight: bold;
+    font-size: 1.3vw;
+    max-font-size: 6.5px;
+    color: #2c5f74;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  #lobbyBtn:active { transform: scale(0.96); }
+
+  /* ---- Shared overlay (dim background covering full screen) ---- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 30, 48, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 40;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  .overlay.hidden { display: none; }
+
+  .panel {
+    background: #fffef7;
+    border-radius: 20px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .panel h1 {
+    margin: 0 0 6px;
+    font-size: 28px;
+    color: #2c5f74;
+  }
+  .panel h2 {
+    margin: 0 0 16px;
+    font-size: 24px;
+    color: #2c5f74;
+  }
+  .panel p.subtitle {
+    margin: 0 0 18px;
+    color: #6b7a80;
+    font-size: 14px;
+  }
+
+  #playerNameInput {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    font-size: 16px;
+    border: 2px solid #cfe3e9;
+    border-radius: 12px;
+    margin-bottom: 18px;
+    outline: none;
+    font-family: inherit;
+  }
+  #playerNameInput:focus { border-color: #4fb3c9; }
+
+  .char-select {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .char-option {
+    flex: 1;
+    max-width: 150px;
+    border: 3px solid #dfe9ec;
+    border-radius: 16px;
+    padding: 12px 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+    background: #f6fbfc;
+  }
+  .char-option:active { transform: scale(0.96); }
+  .char-option.selected {
+    border-color: #ffb300;
+    background: #fff6e0;
+    box-shadow: 0 0 0 4px rgba(255,179,0,0.25);
+  }
+  .char-option img {
+    width: 100%;
+    height: 90px;
+    object-fit: contain;
+    display: block;
+    margin-bottom: 8px;
+  }
+  .char-option span {
+    font-size: 13px;
+    font-weight: bold;
+    color: #2c5f74;
+  }
+
+  .btn-primary {
+    width: 100%;
+    padding: 14px;
+    font-size: 17px;
+    font-weight: bold;
+    color: #fff;
+    background: linear-gradient(180deg, #57c6e8, #2c9dc4);
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #1f7c9c;
+    margin-bottom: 12px;
+  }
+  .btn-primary:disabled {
+    background: #b9c6ca;
+    box-shadow: 0 4px 0 #97a3a7;
+    cursor: not-allowed;
+  }
+  .btn-primary:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 #1f7c9c; }
+
+  .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    font-weight: bold;
+    color: #2c5f74;
+    background: #eaf5f8;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .btn-secondary:active { transform: scale(0.98); }
+
+  #leaderboardList {
+    list-style: none;
+    margin: 0 0 20px;
+    padding: 0;
+    text-align: left;
+  }
+  #leaderboardList li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    background: #f6fbfc;
+    font-size: 15px;
+  }
+  #leaderboardList li:nth-child(1) { background: #fff3cd; }
+  #leaderboardList li:nth-child(2) { background: #f0f0f0; }
+  #leaderboardList li:nth-child(3) { background: #fbe6d4; }
+  #leaderboardList .rank {
+    font-weight: bold;
+    color: #2c5f74;
+    width: 28px;
+    flex-shrink: 0;
+  }
+  #leaderboardList .name {
+    flex: 1;
+    font-weight: bold;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #leaderboardList .char-badge {
+    font-size: 11px;
+    color: #fff;
+    background: #8bb8c7;
+    padding: 2px 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  #leaderboardList .pts {
+    font-weight: bold;
+    color: #d17b00;
+    flex-shrink: 0;
+  }
+  #leaderboardList li.empty {
+    justify-content: center;
+    color: #8a9a9f;
+    font-weight: normal;
+  }
