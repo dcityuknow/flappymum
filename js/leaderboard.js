@@ -1,17 +1,42 @@
-// Leaderboard: reads/writes the global Google Sheet backend when configured,
-// otherwise falls back to a local (per-browser) leaderboard in localStorage.
-// ---- Global leaderboard (Google Sheet via Google Apps Script) ----
-// See README.md "Set up the global leaderboard" for the full setup steps.
-// Paste your Web App URL below (looks like https://script.google.com/macros/s/XXXX/exec).
-// Leave it as '' to keep using the local-only (per-browser) leaderboard instead.
-const LEADERBOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwUGT-b__AJsgvw-_jrPKSordEJ3AFwxcbn4L7Kjzxm28HjSew5RGj66OLCTogIpfgxOA/exec';
+// ============================================================
+// leaderboard.js — Bảng xếp hạng Top 10 CHUNG cho mọi người chơi (mọi trình
+// duyệt/máy), dựa trên Firebase Realtime Database. Cấu hình project ở file
+// riêng js/firebase-config.js (xem README.md để lấy config + tạo Rules).
+//
+// Tự động cập nhật real-time nhờ listener .on('value', ...) bên dưới — khi
+// đang mở bảng leaderboard mà có người khác vừa ghi điểm mới, danh sách tự
+// vẽ lại ngay, không cần đóng/mở lại hay tải lại trang.
+//
+// Nếu Firebase CHƯA được cấu hình (js/firebase-config.js còn để giá trị mẫu),
+// leaderboardDB sẽ là null và code tự fallback về leaderboard local
+// (localStorage riêng từng trình duyệt), y hệt hành vi cũ — nên game vẫn
+// chơi được ngay cả khi chưa setup backend.
+// ============================================================
 
-const LEADERBOARD_KEY = 'flappyGameLeaderboardV1';
-const LEADERBOARD_MAX = 10;
+const LEADERBOARD_MAX_ENTRIES = 10;
+// Chỉ dọn bớt các hạng ngoài Top 10 khi số entry đang lưu vượt ngưỡng này,
+// để đỡ phải đọc/ghi Database liên tục mỗi lần có 1 điểm mới.
+const LEADERBOARD_TRIM_THRESHOLD = 30;
+const LOCAL_LEADERBOARD_KEY = 'flappyGameLeaderboardV1';
 
-function loadLeaderboard() {
+// Bản sao Top 10 mới nhất nhận từ Firebase, dùng để vẽ UI ngay lập tức mà
+// không cần đọc lại Database mỗi lần mở bảng.
+let currentLeaderboardList = [];
+
+// Điểm cao hơn luôn xếp trên.
+function compareLeaderboardEntries(a, b) {
+  return b.score - a.score;
+}
+
+function getLeaderboardRef() {
+  if (typeof leaderboardDB === 'undefined' || !leaderboardDB) return null;
+  return leaderboardDB.ref('leaderboard');
+}
+
+// ---- Fallback local (chỉ dùng khi Firebase chưa được cấu hình) ----
+function loadLocalLeaderboard() {
   try {
-    const raw = localStorage.getItem(LEADERBOARD_KEY);
+    const raw = localStorage.getItem(LOCAL_LEADERBOARD_KEY);
     const list = raw ? JSON.parse(raw) : [];
     return Array.isArray(list) ? list : [];
   } catch (e) {
@@ -19,57 +44,50 @@ function loadLeaderboard() {
   }
 }
 
-function saveLeaderboard(list) {
+function saveLocalLeaderboard(list) {
   try {
-    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(list));
+    localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(list));
   } catch (e) {
-    // Ignore if the browser blocks localStorage (e.g. strict private/incognito mode)
+    // Bỏ qua nếu trình duyệt chặn localStorage (vd chế độ ẩn danh nghiêm ngặt)
   }
 }
 
-// Fetches the global top scores from the Apps Script Web App.
-// Returns null (instead of throwing) if not configured or unreachable, so callers can fall back.
-async function fetchGlobalLeaderboard() {
-  if (!LEADERBOARD_API_URL) return null;
-  try {
-    const res = await fetch(LEADERBOARD_API_URL + '?action=list');
-    if (!res.ok) throw new Error('Bad response: ' + res.status);
-    const data = await res.json();
-    return Array.isArray(data) ? data : null;
-  } catch (e) {
-    console.warn('Could not reach the global leaderboard, falling back to local:', e);
-    return null;
+// Lưu điểm của 1 lượt chơi vừa kết thúc — lên Firebase nếu đã cấu hình,
+// hoặc lưu local nếu chưa.
+function addScoreToLeaderboard(name, scoreValue, charNum) {
+  const entry = { name: name || 'Anonymous', score: scoreValue, charNum: charNum, date: Date.now() };
+
+  const ref = getLeaderboardRef();
+  if (!ref) {
+    console.warn('[leaderboard] Firebase chưa được cấu hình — xem js/firebase-config.js. Điểm này chỉ lưu local.');
+    const list = loadLocalLeaderboard();
+    list.push(entry);
+    list.sort(compareLeaderboardEntries);
+    saveLocalLeaderboard(list.slice(0, LEADERBOARD_MAX_ENTRIES));
+    renderLeaderboard();
+    return;
   }
+
+  ref.push(entry)
+    .then(() => trimLeaderboardIfNeeded())
+    .catch(err => console.warn('[leaderboard] Không ghi được lên Firebase:', err));
 }
 
-// Submits one score to the Apps Script Web App.
-// Uses 'text/plain' as the content type on purpose: it keeps this a "simple request"
-// so the browser skips the CORS preflight, which Apps Script Web Apps don't handle well.
-async function submitGlobalScore(name, scoreValue, charNum) {
-  if (!LEADERBOARD_API_URL) return false;
-  try {
-    await fetch(LEADERBOARD_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ name: name, score: scoreValue, charNum: charNum })
-    });
-    return true;
-  } catch (e) {
-    console.warn('Could not submit the score to the global leaderboard:', e);
-    return false;
-  }
-}
-
-// Saves a finished run's score. Tries the global leaderboard first (if configured);
-// falls back to the local per-browser leaderboard if that fails or isn't set up.
-async function addScoreToLeaderboard(name, scoreValue, charNum) {
-  const sentToGlobal = await submitGlobalScore(name, scoreValue, charNum);
-  if (!sentToGlobal) {
-    const list = loadLeaderboard();
-    list.push({ name: name || 'Anonymous', score: scoreValue, charNum: charNum, date: Date.now() });
-    list.sort((a, b) => b.score - a.score);
-    saveLeaderboard(list.slice(0, LEADERBOARD_MAX));
-  }
+// Dọn bớt các hạng bị rớt ngoài Top 10 khỏi Database khi đã vượt
+// LEADERBOARD_TRIM_THRESHOLD, để Database không phình to vô hạn theo thời gian.
+function trimLeaderboardIfNeeded() {
+  const ref = getLeaderboardRef();
+  if (!ref) return;
+  ref.once('value').then(snapshot => {
+    const raw = snapshot.val();
+    if (!raw) return;
+    const keys = Object.keys(raw);
+    if (keys.length <= LEADERBOARD_TRIM_THRESHOLD) return;
+    const list = keys.map(k => ({ key: k, ...raw[k] }));
+    list.sort(compareLeaderboardEntries);
+    const toDelete = list.slice(LEADERBOARD_MAX_ENTRIES);
+    toDelete.forEach(entry => ref.child(entry.key).remove().catch(() => {}));
+  }).catch(err => console.warn('[leaderboard] Không dọn được Database:', err));
 }
 
 function escapeHtml(str) {
@@ -78,16 +96,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-async function renderLeaderboard() {
-  leaderboardListEl.innerHTML = '<li class="empty">Loading...</li>';
-
-  let list = null;
-  if (LEADERBOARD_API_URL) {
-    list = await fetchGlobalLeaderboard();
-  }
-  if (list === null) {
-    list = loadLeaderboard();
-  }
+function renderLeaderboard() {
+  const ref = getLeaderboardRef();
+  const list = ref ? currentLeaderboardList : loadLocalLeaderboard();
 
   leaderboardListEl.innerHTML = '';
   if (list.length === 0) {
@@ -125,3 +136,25 @@ leaderboardOverlay.addEventListener('click', (e) => {
   if (e.target === leaderboardOverlay) closeLeaderboard();
 });
 
+// ---- Lắng nghe Firebase real-time ----
+// Bất cứ khi nào Database thay đổi (ai đó vừa ghi điểm, có thể ở máy khác),
+// danh sách được sắp xếp lại, cắt còn Top 10, và vẽ lại UI ngay nếu bảng
+// đang mở — không cần tải lại trang.
+function initLeaderboardListener() {
+  const ref = getLeaderboardRef();
+  if (!ref) return; // chế độ local-only: renderLeaderboard() tự đọc localStorage mỗi lần gọi
+
+  ref.on('value', snapshot => {
+    const raw = snapshot.val();
+    const list = raw ? Object.values(raw) : [];
+    list.sort(compareLeaderboardEntries);
+    currentLeaderboardList = list.slice(0, LEADERBOARD_MAX_ENTRIES);
+    if (!leaderboardOverlay.classList.contains('hidden')) {
+      renderLeaderboard();
+    }
+  }, err => {
+    console.warn('[leaderboard] Mất kết nối tới Firebase:', err);
+  });
+}
+
+initLeaderboardListener();
