@@ -7,7 +7,7 @@
 const LEADERBOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwUGT-b__AJsgvw-_jrPKSordEJ3AFwxcbn4L7Kjzxm28HjSew5RGj66OLCTogIpfgxOA/exec';
 
 const LEADERBOARD_KEY = 'flappyGameLeaderboardV1';
-const LEADERBOARD_MAX = 20;
+const LEADERBOARD_MAX = 10;
 
 function loadLeaderboard() {
   try {
