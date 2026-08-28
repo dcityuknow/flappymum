@@ -4,10 +4,10 @@
 // See README.md "Set up the global leaderboard" for the full setup steps.
 // Paste your Web App URL below (looks like https://script.google.com/macros/s/XXXX/exec).
 // Leave it as '' to keep using the local-only (per-browser) leaderboard instead.
-const LEADERBOARD_API_URL = '';
+const LEADERBOARD_API_URL = 'https://script.google.com/macros/s/AKfycbwUGT-b__AJsgvw-_jrPKSordEJ3AFwxcbn4L7Kjzxm28HjSew5RGj66OLCTogIpfgxOA/exec';
 
 const LEADERBOARD_KEY = 'flappyGameLeaderboardV1';
-const LEADERBOARD_MAX = 10;
+const LEADERBOARD_MAX = 20;
 
 function loadLeaderboard() {
   try {
