@@ -13,10 +13,10 @@
 // ============================================================
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.YOUR_REGION.firebasedatabase.app",
-  projectId: "YOUR_PROJECT_ID",
+  apiKey: "AIzaSyDjd_XYdgBAZl04njsMH-lnSTcsqMFAsB8",
+  authDomain: "flappymum-77d0c.firebaseapp.com",
+  databaseURL: "https://flappymum-77d0c-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "flappymum-77d0c",
 };
 
 // `leaderboardDB` là biến global mà js/leaderboard.js đọc. Để nguyên giá trị
